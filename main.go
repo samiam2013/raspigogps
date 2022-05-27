@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/adrianmo/go-nmea"
 	"github.com/sirupsen/logrus"
 	"github.com/tarm/serial"
 )
@@ -51,13 +52,44 @@ func main() {
 			case err := <-errC:
 				logrus.WithError(err).Fatal("Error reading serial port")
 			case data := <-gpsData:
-				fmt.Println("--BEGIN--\n" + data + "\n--END--")
+				display(data, errC, exit)
+				err := monitor(data)
+				if err != nil {
+					logrus.WithError(err).Fatal("Error monitoring NMEA GPS data")
+				}
+				save("", nil, nil) // to prevent unused warning
 			}
 		}
 	}(gpsData, errC, exit)
 	<-exit // wait for the exit signal from the running go routine (it's not coming)
-	// display the gps data to a nokia 5510 display
-	// check the location and a switch for an audible alarm
-	// log the gps data to a file
+}
 
+func display(data string, errC chan error, exit chan bool) {
+	fmt.Println("--BEGIN--\n" + data + "\n--END--")
+	// display the gps data to a nokia 5510 display
+}
+
+func monitor(data string) error {
+	data = strings.Trim(data, "\x00")
+	data = strings.TrimRight(data, "\r\n")
+	sentences := strings.Split(data, "\r\n")
+
+	for i := range sentences {
+		if len(sentences[i]) == 0 || sentences[i][0] != '$' {
+			continue
+		}
+		s, err := nmea.Parse(sentences[i])
+		if err != nil {
+			return err
+		}
+		if s.DataType() == nmea.TypeGLL {
+			m := s.(nmea.GLL)
+			fmt.Println("lat:", m.Latitude, "lon:", m.Longitude)
+		}
+	}
+	return nil
+}
+
+func save(data string, errC chan error, exit chan bool) {
+	// save the gps data to a file
 }
