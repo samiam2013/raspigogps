@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/sirupsen/logrus"
 	"github.com/tarm/serial"
 )
@@ -8,7 +11,7 @@ import (
 func main() {
 	// look for the gps dongle and open it
 	config := &serial.Config{
-		Name:        "/dev/ttyAMC0",
+		Name:        "/dev/ttyACM0",
 		Baud:        9600,
 		ReadTimeout: 1,
 		Size:        8,
@@ -22,14 +25,17 @@ func main() {
 	defer port.Close()
 
 	// start a channel to send the gps data to monitoring goroutines
-	gpsData := make(chan string, 10)
+	gpsData := make(chan string)
 	errC := make(chan error)
 	go func(gpsData chan string, errC chan error) {
 
-		buf := make([]byte, 2048)
+		buf := make([]byte, 1024)
 		for {
 			_, err := port.Read(buf)
 			if err != nil {
+				if strings.Contains(err.Error(), "EOF") {
+					continue
+				}
 				errC <- err
 				return
 			}
@@ -40,11 +46,13 @@ func main() {
 	exit := make(chan bool)
 	// start a goroutine to read the gps data or exit if there's an error
 	go func(gpsData chan string, errC chan error, exit chan bool) {
-		select {
-		case err := <-errC:
-			logrus.WithError(err).Fatal("Error reading serial port")
-		case data := <-gpsData:
-			logrus.Info(data)
+		for {
+			select {
+			case err := <-errC:
+				logrus.WithError(err).Fatal("Error reading serial port")
+			case data := <-gpsData:
+				fmt.Println("--BEGIN--\n" + data + "\n--END--")
+			}
 		}
 	}(gpsData, errC, exit)
 	<-exit // wait for the exit signal from the running go routine (it's not coming)
