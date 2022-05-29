@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/adrianmo/go-nmea"
 	"github.com/sirupsen/logrus"
@@ -45,6 +47,11 @@ func main() {
 	}(gpsData, errC)
 
 	exit := make(chan bool)
+	saver, closer, err := makeSaver("gps.log")
+	defer closer()
+	if err != nil {
+		logrus.WithError(err).Fatal("Could make saver function")
+	}
 	// start a goroutine to read the gps data or exit if there's an error
 	go func(gpsData chan string, errC chan error, exit chan bool) {
 		for {
@@ -53,11 +60,16 @@ func main() {
 				logrus.WithError(err).Fatal("Error reading serial port")
 			case data := <-gpsData:
 				display(data, errC, exit)
-				err := monitor(data)
+				parsed, err := parse(data)
 				if err != nil {
-					logrus.WithError(err).Fatal("Error monitoring NMEA GPS data")
+					logrus.WithError(err).Error("Error monitoring NMEA GPS data")
+					continue
 				}
-				save("", nil, nil) // to prevent unused warning
+				err = saver(parsed.String())
+				if err != nil {
+					logrus.WithError(err).Fatal("Error saving GPS data")
+				}
+
 			}
 		}
 	}(gpsData, errC, exit)
@@ -69,7 +81,16 @@ func display(data string, errC chan error, exit chan bool) {
 	// display the gps data to a nokia 5510 display
 }
 
-func monitor(data string) error {
+type gpsData struct {
+	latitude  float64
+	longitude float64
+}
+
+func (g gpsData) String() string {
+	return fmt.Sprintf("time: %v, latitude: %f, longitude: %f\n", time.Now(), g.latitude, g.longitude)
+}
+
+func parse(data string) (gpsData, error) {
 	data = strings.Trim(data, "\x00")
 	data = strings.TrimRight(data, "\r\n")
 	sentences := strings.Split(data, "\r\n")
@@ -80,16 +101,31 @@ func monitor(data string) error {
 		}
 		s, err := nmea.Parse(sentences[i])
 		if err != nil {
-			return err
+			return gpsData{}, err
 		}
 		if s.DataType() == nmea.TypeGLL {
 			m := s.(nmea.GLL)
 			fmt.Println("lat:", m.Latitude, "lon:", m.Longitude)
+			return gpsData{
+				latitude:  m.Latitude,
+				longitude: m.Longitude,
+			}, nil
 		}
 	}
-	return nil
+	return gpsData{}, nil
 }
 
-func save(data string, errC chan error, exit chan bool) {
-	// save the gps data to a file
+func makeSaver(filename string) (func(string) error, func(), error) {
+	// open or create a file
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, nil, err
+	}
+	return func(data string) error {
+		_, err := f.WriteString(data)
+		if err != nil {
+			return err
+		}
+		return nil
+	}, func() { f.Close() }, nil
 }

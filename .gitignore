@@ -1,0 +1,9 @@
+# don't save the log or any log the code produces (it has my location)
+gps.log
+*.log
+**/*.log
+
+# same for the fences configuration
+gpsFences.toml
+
+
