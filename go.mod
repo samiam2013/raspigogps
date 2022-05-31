@@ -9,4 +9,6 @@ require github.com/adrianmo/go-nmea v1.7.0 // indirect
 require (
 	github.com/sirupsen/logrus v1.8.1
 	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
+	periph.io/x/conn/v3 v3.6.10
+	periph.io/x/host/v3 v3.7.2
 )
