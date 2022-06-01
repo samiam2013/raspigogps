@@ -59,13 +59,14 @@ func main() {
 			case err := <-errC:
 				logrus.WithError(err).Fatal("Error reading serial port")
 			case data := <-gpsData:
-				display(data, errC, exit)
+				// display(data, errC, exit)
 				parsed, err := parse(data)
 				if err != nil {
 					logrus.WithError(err).Error("Error monitoring NMEA GPS data")
 					continue
 				}
-				err = saver(parsed.String())
+				csv := fmt.Sprintf("%d,%f,%f\n", time.Now().UnixMicro(), parsed.latitude, parsed.longitude)
+				err = saver(csv)
 				if err != nil {
 					logrus.WithError(err).Fatal("Error saving GPS data")
 				}
@@ -84,10 +85,6 @@ func display(data string, errC chan error, exit chan bool) {
 type gpsData struct {
 	latitude  float64
 	longitude float64
-}
-
-func (g gpsData) String() string {
-	return fmt.Sprintf("time: %v, latitude: %f, longitude: %f\n", time.Now(), g.latitude, g.longitude)
 }
 
 func parse(data string) (gpsData, error) {
@@ -121,6 +118,12 @@ func makeSaver(filename string) (func(string) error, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if stat, err := f.Stat(); err != nil {
+		return nil, nil, err
+	} else if stat.Size() == 0 {
+		f.WriteString("Unix Micro Time, Lattitude, Longitude\n")
+	}
+
 	return func(data string) error {
 		_, err := f.WriteString(data)
 		if err != nil {
