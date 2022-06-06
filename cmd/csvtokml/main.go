@@ -55,7 +55,7 @@ func main() {
 			log.Fatalf("Could not parse longitude: %s", err.Error())
 		}
 		if lat == 0.0 || lat == long {
-			//log.Print("Zeroes spotted in the data, skipping")
+			//      log.Print("Zeroes spotted in the data, skipping")
 			continue
 		}
 		gpsDatum = append(gpsDatum, gpsRecord{
@@ -97,48 +97,56 @@ func captureWaypoints(data []gpsRecord, secondsInterval uint64) []gpsRecord {
 	return filtered
 }
 
-type flatVector struct {
-	Angle float64
-}
-
 func turned(previous, from, to gpsRecord) bool {
-	oldVec := getVector(previous, from)
-	newVec := getVector(from, to)
-	turned := math.Abs(oldVec.Angle-newVec.Angle) > 5.0
+	oldAngle := getUnitCirAngle(previous, from)
+	newAngle := getUnitCirAngle(from, to)
+	turned := math.Abs(oldAngle-newAngle) > 5.0
 	if turned {
-		fmt.Printf("Turned. old angle %f, new angle %f\n", oldVec.Angle, newVec.Angle)
+		fmt.Printf("Turned. old angle %f, new angle %f\n", oldAngle, newAngle)
 	}
 	return turned
 }
 
-func getVector(from, to gpsRecord) flatVector {
-	if from.Lat > to.Lat {
-		// going south
-		if from.Long > to.Long {
-			// going west
-			// need to measure how far south / (div by) how far west
-			return flatVector{
-				Angle: math.Tan(math.Abs(from.Lat-to.Lat)/math.Abs(to.Long-from.Long)) + 180.0,
-			}
+// to get the actual heading spin 90 degrees counterclockwise
+func getUnitCirAngle(from, to gpsRecord) float64 {
+	// handle the edge case of heading directly west or east
+	if to.Long == from.Long {
+		if to.Lat == from.Lat {
+			return 0.0
+		} else if to.Lat > from.Lat {
+			return 90.0 // straight north
 		} else {
-			// going east
-			return flatVector{
-				Angle: math.Tan((from.Lat-to.Lat)/(from.Long-to.Long)) + 90.0,
-			}
+			return 270.0 // straight south
+		}
+	} else if to.Long > from.Long {
+		// if the to longitude is higher, it's headed right (east)
+		if to.Lat > from.Lat {
+			// if the lattitude is higher, it's headed up (north)
+			slope := (to.Lat - from.Lat) / (from.Long - to.Long)
+			angle := ((math.Atan(slope) / (math.Pi * 2)) * 360.0) * -1.0
+			fmt.Printf("angle radians: %f; degrees: %f;\n", math.Atan(slope), angle)
+			return angle
+		} else {
+			// it's headed down (south)
+			slope := (from.Lat - to.Lat) / (from.Long - to.Long)
+			angle := ((math.Atan(slope) / (math.Pi * 2)) * 360.0) + 360
+			fmt.Printf("angle: %f degrees\n", angle)
+			return angle
 		}
 	} else {
-		// going north
-		if from.Long > to.Long {
-			// going west
-			// need to measure how far north / (div by) how far west
-			return flatVector{
-				Angle: math.Tan(math.Abs(to.Lat-from.Lat)/math.Abs(to.Long-from.Long)) + 270,
-			}
+		// if the longitude is lower, it's headed left (west)
+		if to.Lat > from.Lat {
+			// if the lattitude is higher, it's headed up (north)
+			slope := (to.Lat - from.Lat) / (to.Long - from.Long)
+			angle := 180 + ((math.Atan(slope) / (math.Pi * 2)) * 360.0)
+			fmt.Printf("angle radians: %f; degrees: %f;\n", math.Atan(slope), angle)
+			return angle
 		} else {
-			// going east
-			return flatVector{
-				Angle: math.Tan(math.Abs(to.Lat-from.Lat) / math.Abs(from.Long-to.Long)),
-			}
+			// it's headed down (south)
+			slope := (from.Lat - to.Lat) / (to.Long - from.Long)
+			angle := 180 + (((math.Atan(slope) / (math.Pi * 2)) * 360.0) * -1.0)
+			fmt.Printf("angle: %f degrees\n", angle)
+			return angle
 		}
 	}
 }
