@@ -1,4 +1,4 @@
-package main
+package logger
 
 import (
 	"fmt"
@@ -17,6 +17,7 @@ func main() {
 	white := rpi.P1_7
 	blue := rpi.P1_29
 	green := rpi.P1_31
+	engage := rpi.P1_33
 	if err := green.Out(false); err != nil {
 		log.Printf("Could not set greenpin low: %s\n", err.Error())
 	}
@@ -30,6 +31,13 @@ func main() {
 	t := time.NewTicker(1000 * time.Millisecond)
 	for l := gpio.Low; ; l = !l {
 		fmt.Println("Tick")
+		if engage.Read() {
+			green.Out(false)
+			white.Out(false)
+			blue.Out(false)
+			<-t.C
+			continue
+		}
 		if err := green.Out(l); err != nil {
 			log.Fatalf("Could not write to pin: %s", err.Error())
 		}
