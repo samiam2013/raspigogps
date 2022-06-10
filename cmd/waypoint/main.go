@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/adrianmo/go-nmea"
@@ -26,21 +28,22 @@ func main() {
 		log.Fatalf("Failed to host.Init() for periphio: %s", err.Error())
 	}
 
-	// turn off white and then blink green
+	// turn off white
 	white := rpi.P1_7
-	green := rpi.P1_31
 	if err := white.Out(gpio.Low); err != nil {
 		log.Fatalf("Failed to turn off white led: %s", err.Error())
 	}
-	go func(led gpio.PinIO) {
-		outVal := gpio.High
-		for {
-			time.Sleep(time.Millisecond * 500)
-			outVal = !outVal
-			led.Out(outVal)
-		}
-	}(green)
+	// go func(led gpio.PinIO) {
+	// 	outVal := gpio.High
+	// 	for {
+	// 		time.Sleep(time.Millisecond * 500)
+	// 		outVal = !outVal
+	// 		led.Out(outVal)
+	// 	}
+	// }(white)
 
+	// overall objective:
+	// using an engage button (side button)
 	// when the button is pressed get the gps waypoint and print it with the time
 	// and flash the number of the waypoint
 	button := rpi.P1_33
@@ -48,8 +51,46 @@ func main() {
 
 	// Set it as input, with an internal pull down resistor:
 	if err := button.In(gpio.PullDown, gpio.BothEdges); err != nil {
-		log.Fatal(err)
+		logrus.WithError(err).Fatal("Could not set main button pull down and mode.")
 	}
+
+	sideButton := rpi.P1_35
+	sideButtonLed := rpi.P1_31
+
+	type engageFlag struct {
+		mu   sync.Mutex
+		flag bool
+	}
+	engage := engageFlag{}
+	engage.mu.Lock()
+	engage.flag = false
+	engage.mu.Unlock()
+
+	if err := sideButton.In(gpio.PullDown, gpio.BothEdges); err != nil {
+		logrus.WithError(err).Fatal("Could not set side button pull down and mode.")
+	}
+	sideButtonLed.Out(gpio.Low)
+
+	go func(e *engageFlag) {
+		everyOther := true
+		for {
+			sideButton.WaitForEdge(-1)
+			everyOther = !everyOther
+			if everyOther {
+				continue
+			}
+			e.mu.Lock()
+			e.flag = !e.flag
+			e.mu.Unlock()
+			if e.flag {
+				sideButtonLed.Out(gpio.High)
+			} else {
+				sideButtonLed.Out(gpio.Low)
+			}
+			// time delay
+			time.Sleep(time.Second * 1)
+		}
+	}(&engage)
 
 	gps := NewGPS()
 	timeout := time.Second * 10
@@ -62,25 +103,37 @@ func main() {
 			time.Sleep(time.Until(lastWPTime.Add(timeout)))
 		}
 		button.WaitForEdge(-1)
+		engage.mu.Lock()
+		engaged := engage.flag
+		engage.mu.Unlock()
+		if !engaged {
+			logrus.Error("Not engaged!")
+			time.Sleep(time.Second * 10)
+			continue
+		}
 		button.Read()
 
 		waypointCount++
 		if waypointCount%2 == 0 {
 			continue
 		}
-		waypoint, err := gps.GetWaypoint()
+		w, err := gps.GetWaypoint()
 		if err != nil {
 			logrus.WithError(err).Error("Couldn't get waypoint.")
 		}
-		fmt.Printf("waypoint: %#v", waypoint)
 		lastWPTime = time.Now()
 		actualCount := ((waypointCount + 1) / 2)
-		fmt.Printf("Waypoint count: %d\n", actualCount)
+		fmt.Printf("%d,%f,%f,%d\n", w.UnixMicroTime, w.Latitude, w.Longitude, actualCount)
+		// fmt.Printf("Waypoint count: %d\n", actualCount)
+		inverse, err := time.ParseDuration(fmt.Sprintf("%fs", 1/math.Log10(float64(actualCount)*33)))
+		if err != nil {
+			logrus.WithError(err).Fatal("Failed to parse inverse duration")
+		}
 		for i := 0; i < actualCount; i++ {
 			buttonLed.Out(gpio.High)
-			time.Sleep(time.Millisecond * 500)
+			time.Sleep(inverse)
 			buttonLed.Out(gpio.Low)
-			time.Sleep(time.Millisecond * 500)
+			time.Sleep(inverse)
 		}
 	}
 	gps.Close()
@@ -130,6 +183,7 @@ func (g *GPS) GetWaypoint() (Waypoint, error) {
 			}
 			return Waypoint{}, err
 		}
+		g.Waypoints = append(g.Waypoints, waypoint)
 		return waypoint, nil
 	}
 }
@@ -149,7 +203,7 @@ func (g *GPS) Parse(data string) (Waypoint, error) {
 		}
 		if s.DataType() == nmea.TypeGLL {
 			m := s.(nmea.GLL)
-			fmt.Println("lat:", m.Latitude, "lon:", m.Longitude)
+			// fmt.Println("lat:", m.Latitude, "lon:", m.Longitude)
 			return Waypoint{
 				Latitude:      m.Latitude,
 				Longitude:     m.Longitude,
