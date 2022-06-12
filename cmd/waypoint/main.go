@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -20,18 +19,19 @@ import (
 )
 
 func main() {
+	logrus.SetLevel(logrus.ErrorLevel)
 	if getProcessOwner() != "root" {
-		log.Fatalf("Must be run as root. user given '%s'", getProcessOwner())
+		logrus.Fatalf("Must be run as root. user given '%s'", getProcessOwner())
 	}
 
 	if _, err := host.Init(); err != nil {
-		log.Fatalf("Failed to host.Init() for periphio: %s", err.Error())
+		logrus.Fatalf("Failed to host.Init() for periphio: %s", err.Error())
 	}
 
 	// turn off white
 	white := rpi.P1_7
 	if err := white.Out(gpio.Low); err != nil {
-		log.Fatalf("Failed to turn off white led: %s", err.Error())
+		logrus.Fatalf("Failed to turn off white led: %s", err.Error())
 	}
 	// go func(led gpio.PinIO) {
 	// 	outVal := gpio.High
@@ -77,6 +77,7 @@ func main() {
 			sideButton.WaitForEdge(-1)
 			everyOther = !everyOther
 			if everyOther {
+				logrus.Debug("Skiping (every other) edge detect on side button for bounce behavior")
 				continue
 			}
 			e.mu.Lock()
@@ -88,6 +89,8 @@ func main() {
 				sideButtonLed.Out(gpio.Low)
 			}
 			// time delay
+			timeout := time.Second * 1
+			logrus.Infof("New engaged flag value: %v, timing out engage button for %s", e.flag, timeout.String())
 			time.Sleep(time.Second * 1)
 		}
 	}(&engage)
@@ -100,21 +103,27 @@ func main() {
 		// if the current time is before the timeout period for the last waypoint
 		if lastWPTime.Add(timeout).Before(time.Now()) {
 			// sleep for the amount of time left
+			logrus.Infof("Record pressed within timeout %s, timing out for %s",
+				timeout.String(), time.Until(lastWPTime.Add(timeout)).String())
 			time.Sleep(time.Until(lastWPTime.Add(timeout)))
+			logrus.Info("Record button timeout over.")
 		}
 		button.WaitForEdge(-1)
 		engage.mu.Lock()
 		engaged := engage.flag
 		engage.mu.Unlock()
 		if !engaged {
-			logrus.Error("Not engaged!")
-			time.Sleep(time.Second * 10)
+			timeoutEngage := time.Second * 10
+			logrus.Warnf("Not engaged! timing out button for %s", timeoutEngage.String())
+			time.Sleep(timeoutEngage)
+			logrus.Info("Engage buttontimeout over.")
 			continue
 		}
 		button.Read()
 
 		waypointCount++
 		if waypointCount%2 == 0 {
+			logrus.Debug("Skipping evens for bounce behavior in main (record) button")
 			continue
 		}
 		w, err := gps.GetWaypoint()
@@ -129,12 +138,14 @@ func main() {
 		if err != nil {
 			logrus.WithError(err).Fatal("Failed to parse inverse duration")
 		}
+		logrus.Info("Starting count by blink")
 		for i := 0; i < actualCount; i++ {
 			buttonLed.Out(gpio.High)
 			time.Sleep(inverse)
 			buttonLed.Out(gpio.Low)
 			time.Sleep(inverse)
 		}
+		logrus.Info("Finishing count by blink")
 	}
 	gps.Close()
 }
