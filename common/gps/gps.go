@@ -13,6 +13,9 @@ type GPSRecord struct {
 	UnixMicro uint64
 	Lat       float64
 	Long      float64
+	Alt       float64
+	Speed     float64
+	Heading   float64
 }
 
 // to get the actual heading spin 90 degrees counterclockwise
@@ -91,6 +94,12 @@ func Parse(data string) (GPSRecord, error) {
 				Lat:  m.Latitude,
 				Long: m.Longitude,
 			}, nil
+		} else if s.DataType() == nmea.TypeGGA {
+			fmt.Println("alt:", s.(nmea.GGA).Altitude, "sats:", s.(nmea.GGA).NumSatellites)
+		} else if s.DataType() == nmea.TypeVTG {
+			fmt.Println("speed:", s.(nmea.VTG).GroundSpeedKPH, "heading:", s.(nmea.VTG).TrueTrack)
+		} else {
+			//fmt.Println("unknown sentence:", sentences[i])
 		}
 	}
 	return GPSRecord{}, fmt.Errorf("no GLL sentence found")
@@ -109,7 +118,7 @@ func StartSerial(serialPortPath string, baudrate int) chan GPSRecord {
 		Size:        8,
 	}
 	// open a serial port to the gps dongle
-	port, err := serial.OpenPort(config)
+	port, err := serial.OpenPort(config) // TODO figure out how to close this
 	// if it's not found, exit with an error
 	if err != nil {
 		//logrus.Error("Error opening serial port: ", err)
