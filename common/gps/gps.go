@@ -77,6 +77,7 @@ func Parse(data string) (GPSRecord, error) {
 	data = strings.TrimRight(data, "\r\n")
 	sentences := strings.Split(data, "\r\n")
 
+	var gr GPSRecord
 	for i := range sentences {
 		if len(sentences[i]) == 0 || sentences[i][0] != '$' {
 			continue
@@ -90,19 +91,21 @@ func Parse(data string) (GPSRecord, error) {
 		if s.DataType() == nmea.TypeGLL {
 			m := s.(nmea.GLL)
 			// fmt.Println("lat:", m.Latitude, "lon:", m.Longitude)
-			return GPSRecord{
-				Lat:  m.Latitude,
-				Long: m.Longitude,
-			}, nil
+			gr.Lat = m.Latitude
+			gr.Long = m.Longitude
 		} else if s.DataType() == nmea.TypeGGA {
-			fmt.Println("alt:", s.(nmea.GGA).Altitude, "sats:", s.(nmea.GGA).NumSatellites)
+			// fmt.Println("alt:", s.(nmea.GGA).Altitude, "sats:", s.(nmea.GGA).NumSatellites)
+			gr.Alt = s.(nmea.GGA).Altitude * 3.28084 // convert to feet
 		} else if s.DataType() == nmea.TypeVTG {
-			fmt.Println("speed:", s.(nmea.VTG).GroundSpeedKPH, "heading:", s.(nmea.VTG).TrueTrack)
-		} else {
-			//fmt.Println("unknown sentence:", sentences[i])
+			// fmt.Println("speed:", s.(nmea.VTG).GroundSpeedKPH, "heading:", s.(nmea.VTG).TrueTrack)
+			gr.Speed = s.(nmea.VTG).GroundSpeedKPH / 1.852 // convert to mph
+			gr.Heading = s.(nmea.VTG).TrueTrack
 		}
 	}
-	return GPSRecord{}, fmt.Errorf("no GLL sentence found")
+	if gr.Lat == 0.0 || gr.Long == 0.0 {
+		return GPSRecord{}, fmt.Errorf("no lat/long")
+	}
+	return gr, nil
 }
 
 type SerialRead func() (GPSRecord, error)

@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/samiam2013/trakembox/common/gps"
 )
@@ -14,7 +13,7 @@ func main() {
 	// start a goroutine to read the gps data or exit if there's an error
 	for {
 		gr := <-recordChan
-		fmt.Printf("%v, %v, %v\n", time.Now().UnixNano(), gr.Lat, gr.Long)
+		fmt.Printf("%+v\n", gr)
 	}
 }
 
