@@ -1,4 +1,4 @@
-module github.com/samiam2013/trakEmBox
+module github.com/samiam2013/trakembox
 
 go 1.18
 
