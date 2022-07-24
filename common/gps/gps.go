@@ -3,6 +3,10 @@ package gps
 import (
 	"fmt"
 	"math"
+	"strings"
+
+	"github.com/adrianmo/go-nmea"
+	"github.com/tarm/serial"
 )
 
 type GPSRecord struct {
@@ -63,4 +67,73 @@ func (g GPSRecord) Turned(from, to GPSRecord) bool {
 		fmt.Printf("Turned. old angle %f, new angle %f\n", oldAngle, newAngle)
 	}
 	return turned
+}
+
+func Parse(data string) (GPSRecord, error) {
+	data = strings.Trim(data, "\x00")
+	data = strings.TrimRight(data, "\r\n")
+	sentences := strings.Split(data, "\r\n")
+
+	for i := range sentences {
+		if len(sentences[i]) == 0 || sentences[i][0] != '$' {
+			continue
+		}
+		s, err := nmea.Parse(sentences[i])
+		if err != nil {
+			// TODO can these be waited to finish/appended/prepended and parsed?
+			// return GPSRecord{}, err
+			continue
+		}
+		if s.DataType() == nmea.TypeGLL {
+			m := s.(nmea.GLL)
+			// fmt.Println("lat:", m.Latitude, "lon:", m.Longitude)
+			return GPSRecord{
+				Lat:  m.Latitude,
+				Long: m.Longitude,
+			}, nil
+		}
+	}
+	return GPSRecord{}, fmt.Errorf("no GLL sentence found")
+}
+
+type SerialRead func() (GPSRecord, error)
+type SerialClose func() error
+
+func StartSerial(serialPortPath string, baudrate int) chan GPSRecord {
+
+	// look for the gps dongle and open it
+	config := &serial.Config{
+		Name:        serialPortPath,
+		Baud:        baudrate,
+		ReadTimeout: 1,
+		Size:        8,
+	}
+	// open a serial port to the gps dongle
+	port, err := serial.OpenPort(config)
+	// if it's not found, exit with an error
+	if err != nil {
+		//logrus.Error("Error opening serial port: ", err)
+		return nil
+	}
+	grC := make(chan GPSRecord)
+	go func(grC chan GPSRecord) {
+		for {
+			buf := make([]byte, 1024)
+			nRead, err := port.Read(buf)
+			if err != nil && !strings.Contains(err.Error(), "EOF") {
+				// logrus.WithError(err).Error("Error reading serial port: ")
+				continue
+			}
+			if nRead > 0 {
+				// logrus.Info("Read from serial port: ", string(buf[:nRead]))
+				gr, err := Parse(string(buf[:nRead]))
+				if err != nil {
+					// logrus.WithError(err).Error("Error parsing data from serial port: ")
+					continue
+				}
+				grC <- gr
+			}
+		}
+	}(grC)
+	return grC
 }
