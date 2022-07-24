@@ -9,16 +9,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"strconv"
-)
 
-type gpsRecord struct {
-	UnixMicro uint64
-	Lat       float64
-	Long      float64
-}
+	"github.com/samiam2013/trakembox/common/gps"
+)
 
 func main() {
 	// get the file argument
@@ -40,7 +35,7 @@ func main() {
 	// peel off the header
 	data = data[1:]
 
-	gpsDatum := make([]gpsRecord, 0)
+	gpsDatum := make([]gps.GPSRecord, 0)
 	for _, row := range data {
 		unixMicroTime, err := strconv.ParseInt(row[0], 10, 64)
 		if err != nil {
@@ -58,7 +53,7 @@ func main() {
 			//      log.Print("Zeroes spotted in the data, skipping")
 			continue
 		}
-		gpsDatum = append(gpsDatum, gpsRecord{
+		gpsDatum = append(gpsDatum, gps.GPSRecord{
 			UnixMicro: uint64(unixMicroTime),
 			Lat:       lat,
 			Long:      long,
@@ -75,19 +70,19 @@ func main() {
 
 }
 
-func captureWaypoints(data []gpsRecord, secondsInterval uint64) []gpsRecord {
+func captureWaypoints(data []gps.GPSRecord, secondsInterval uint64) []gps.GPSRecord {
 	start := data[0].UnixMicro
 	lastWaypointTime := start
 	lastWaypointIdx := 0
 	previousWPIdx := lastWaypointIdx
-	filtered := make([]gpsRecord, 1)
+	filtered := make([]gps.GPSRecord, 1)
 	for i, coord := range data {
 		if coord.UnixMicro-(secondsInterval*1_000_000) > lastWaypointTime {
 			filtered = append(filtered, coord)
 			previousWPIdx = lastWaypointIdx
 			lastWaypointTime = coord.UnixMicro
 			lastWaypointIdx = i
-		} else if turned(data[previousWPIdx], data[lastWaypointIdx], coord) {
+		} else if data[previousWPIdx].Turned(data[lastWaypointIdx], coord) {
 			filtered = append(filtered, coord)
 			previousWPIdx = lastWaypointIdx
 			lastWaypointTime = coord.UnixMicro
@@ -95,58 +90,4 @@ func captureWaypoints(data []gpsRecord, secondsInterval uint64) []gpsRecord {
 		}
 	}
 	return filtered
-}
-
-func turned(previous, from, to gpsRecord) bool {
-	oldAngle := getUnitCirAngle(previous, from)
-	newAngle := getUnitCirAngle(from, to)
-	turned := math.Abs(oldAngle-newAngle) > 5.0
-	if turned {
-		fmt.Printf("Turned. old angle %f, new angle %f\n", oldAngle, newAngle)
-	}
-	return turned
-}
-
-// to get the actual heading spin 90 degrees counterclockwise
-func getUnitCirAngle(from, to gpsRecord) float64 {
-	// handle the edge case of heading directly west or east
-	if to.Long == from.Long {
-		if to.Lat == from.Lat {
-			return 0.0
-		} else if to.Lat > from.Lat {
-			return 90.0 // straight north
-		} else {
-			return 270.0 // straight south
-		}
-	} else if to.Long > from.Long {
-		// if the to longitude is higher, it's headed right (east)
-		if to.Lat > from.Lat {
-			// if the lattitude is higher, it's headed up (north)
-			slope := (to.Lat - from.Lat) / (from.Long - to.Long)
-			angle := ((math.Atan(slope) / (math.Pi * 2)) * 360.0) * -1.0
-			fmt.Printf("angle radians: %f; degrees: %f;\n", math.Atan(slope), angle)
-			return angle
-		} else {
-			// it's headed down (south)
-			slope := (from.Lat - to.Lat) / (from.Long - to.Long)
-			angle := ((math.Atan(slope) / (math.Pi * 2)) * 360.0) + 360
-			fmt.Printf("angle: %f degrees\n", angle)
-			return angle
-		}
-	} else {
-		// if the longitude is lower, it's headed left (west)
-		if to.Lat > from.Lat {
-			// if the lattitude is higher, it's headed up (north)
-			slope := (to.Lat - from.Lat) / (to.Long - from.Long)
-			angle := 180 + ((math.Atan(slope) / (math.Pi * 2)) * 360.0)
-			fmt.Printf("angle radians: %f; degrees: %f;\n", math.Atan(slope), angle)
-			return angle
-		} else {
-			// it's headed down (south)
-			slope := (from.Lat - to.Lat) / (to.Long - from.Long)
-			angle := 180 + (((math.Atan(slope) / (math.Pi * 2)) * 360.0) * -1.0)
-			fmt.Printf("angle: %f degrees\n", angle)
-			return angle
-		}
-	}
 }
