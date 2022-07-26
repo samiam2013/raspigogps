@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/adrianmo/go-nmea"
+	"github.com/sirupsen/logrus"
 	"github.com/tarm/serial"
 )
 
@@ -16,6 +18,8 @@ type GPSRecord struct {
 	Alt       float64
 	Speed     float64
 	Heading   float64
+	NumSats   int64
+	TimeStr   string
 }
 
 // to get the actual heading spin 90 degrees counterclockwise
@@ -93,9 +97,11 @@ func Parse(data string) (GPSRecord, error) {
 			// fmt.Println("lat:", m.Latitude, "lon:", m.Longitude)
 			gr.Lat = m.Latitude
 			gr.Long = m.Longitude
+			gr.TimeStr = m.Time.String()
 		} else if s.DataType() == nmea.TypeGGA {
 			// fmt.Println("alt:", s.(nmea.GGA).Altitude, "sats:", s.(nmea.GGA).NumSatellites)
 			gr.Alt = s.(nmea.GGA).Altitude * 3.28084 // convert to feet
+			gr.NumSats = s.(nmea.GGA).NumSatellites
 		} else if s.DataType() == nmea.TypeVTG {
 			// fmt.Println("speed:", s.(nmea.VTG).GroundSpeedKPH, "heading:", s.(nmea.VTG).TrueTrack)
 			gr.Speed = s.(nmea.VTG).GroundSpeedKPH / 1.852 // convert to mph
@@ -105,6 +111,7 @@ func Parse(data string) (GPSRecord, error) {
 	if gr.Lat == 0.0 || gr.Long == 0.0 {
 		return GPSRecord{}, fmt.Errorf("no lat/long")
 	}
+	gr.UnixMicro = uint64(time.Now().UnixNano() / 1000)
 	return gr, nil
 }
 
@@ -124,23 +131,32 @@ func StartSerial(serialPortPath string, baudrate int) chan GPSRecord {
 	port, err := serial.OpenPort(config) // TODO figure out how to close this
 	// if it's not found, exit with an error
 	if err != nil {
-		//logrus.Error("Error opening serial port: ", err)
+		logrus.Error("Error opening serial port: ", err)
 		return nil
 	}
 	grC := make(chan GPSRecord)
 	go func(grC chan GPSRecord) {
 		for {
 			buf := make([]byte, 1024)
+			delayedBuf := ""
 			nRead, err := port.Read(buf)
 			if err != nil && !strings.Contains(err.Error(), "EOF") {
-				// logrus.WithError(err).Error("Error reading serial port: ")
+				logrus.WithError(err).Error("Error reading serial port: ")
 				continue
 			}
 			if nRead > 0 {
-				// logrus.Info("Read from serial port: ", string(buf[:nRead]))
-				gr, err := Parse(string(buf[:nRead]))
+				delayedBuf += string(buf[:nRead])
+				// clear the buffer
+				buf = make([]byte, 1024)
+				time.Sleep(time.Millisecond * 100) // wait for the next read
+				nRead, _ = port.Read(buf)          // assuming if there was no error before there is none now :D
+				// append the new data to the delayed buffer
+				delayedBuf += string(buf[:nRead])
+				logrus.Info("Read from serial port: ", delayedBuf)
+
+				gr, err := Parse(delayedBuf)
 				if err != nil {
-					// logrus.WithError(err).Error("Error parsing data from serial port: ")
+					logrus.WithError(err).Error("Error parsing data from serial port: ")
 					continue
 				}
 				grC <- gr

@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	recordChan := gps.StartSerial("/dev/ttyACM0", 9600)
+	recordChan := gps.StartSerial("/dev/ttyACM1", 9600)
 
 	lcd := cwrapper.NewLCD("/dev/i2c-1", 0x3c)
 	lcd.LCDInit()
@@ -42,6 +42,10 @@ func main() {
 			hdg := fmt.Sprintf("  hdg %.1f", gr.Heading)
 			for i := 0; i < len(hdg); i++ {
 				lcd.PrintAtRowCol(rune(hdg[i]), 7, i)
+			}
+			sats := fmt.Sprintf("  sats %d", gr.NumSats)
+			for i := 0; i < len(sats); i++ {
+				lcd.PrintAtRowCol(rune(sats[i]), 8, i)
 			}
 
 		}
