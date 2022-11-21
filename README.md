@@ -1,4 +1,3 @@
 # trackEmBox
 
-code so that I can use my rpi4 to track my car in case it gets stolen because
-I have the equipment to do that and insurance wouldn't cover theft (I don't think, not sure)
+code that I worked on using an i2c display, rpi 3 or 4 and a usb GPS device to make a speedometer for my old car (dash lights went out, this was more fun than fixing them)
