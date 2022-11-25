@@ -1,4 +1,4 @@
-module github.com/samiam2013/trakembox
+module github.com/samiam2013/raspigogps
 
 go 1.18
 
