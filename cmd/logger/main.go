@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/samiam2013/trakembox/common/gps"
+	"github.com/samiam2013/raspigogps/common/gps"
 )
 
 func main() {
