@@ -33,14 +33,6 @@ func main() {
 	if err := white.Out(gpio.Low); err != nil {
 		logrus.Fatalf("Failed to turn off white led: %s", err.Error())
 	}
-	// go func(led gpio.PinIO) {
-	// 	outVal := gpio.High
-	// 	for {
-	// 		time.Sleep(time.Millisecond * 500)
-	// 		outVal = !outVal
-	// 		led.Out(outVal)
-	// 	}
-	// }(white)
 
 	// overall objective:
 	// using an engage button (side button)

@@ -16,24 +16,3 @@ func main() {
 		fmt.Printf("%+v\n", gr)
 	}
 }
-
-func makeSaver(filename string) (func(string) error, func(), error) {
-	// open or create a file
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return nil, nil, err
-	}
-	if stat, err := f.Stat(); err != nil {
-		return nil, nil, err
-	} else if stat.Size() == 0 {
-		f.WriteString("Unix Micro Time, Lattitude, Longitude\n")
-	}
-
-	return func(data string) error {
-		_, err := f.WriteString(data)
-		if err != nil {
-			return err
-		}
-		return nil
-	}, func() { f.Close() }, nil
-}
